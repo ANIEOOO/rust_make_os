@@ -8,8 +8,14 @@
 #![feature(custom_test_frameworks)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
+#![feature(abi_x86_interrupt)]
 
 use core::panic::PanicInfo;
+
+
+pub mod serial;
+pub mod vga_buffer;
+pub mod interrupts;
 
 pub fn test_runner(tests: &[&dyn Fn()]) {
     serial_println!("Running {} tests", tests.len());
@@ -30,6 +36,7 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 #[cfg(test)]
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    init();      // new
     test_main();
     loop {}
 }
@@ -40,9 +47,6 @@ fn panic(info: &PanicInfo) -> ! {
     test_panic_handler(info)
 }
 
-
-pub mod serial;
-pub mod vga_buffer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -59,4 +63,17 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
         let mut port = Port::new(0xf4);
         port.write(exit_code as u32);
     }
+}
+
+// 中断向量表初始化
+pub fn init() {
+    interrupts::init_idt();
+}
+
+#[test_case]
+fn test_breakpoint_exception() {
+    // invoke a breakpoint exception
+    serial_print!("test_breakpoint_exception... ");
+    x86_64::instructions::interrupts::int3();
+    serial_println!("[ok]");
 }
