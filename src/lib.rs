@@ -16,6 +16,7 @@ use core::panic::PanicInfo;
 pub mod serial;
 pub mod vga_buffer;
 pub mod interrupts;
+pub mod gdt;
 
 pub fn test_runner(tests: &[&dyn Fn()]) {
     serial_println!("Running {} tests", tests.len());
@@ -67,6 +68,7 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
 
 // 中断向量表初始化
 pub fn init() {
+    gdt::init();
     interrupts::init_idt();
 }
 

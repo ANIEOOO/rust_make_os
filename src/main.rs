@@ -17,9 +17,11 @@ pub extern "C" fn _start() -> ! {
     blog_os::init(); // new
 
     // 触发breakpoint异常
-    x86_64::instructions::interrupts::int3();
+    fn stack_overflow() {
+        stack_overflow(); // 每一次递归都会将返回地址入栈
+    }
 
-
+    stack_overflow();
 
     #[cfg(test)]
     test_main();
