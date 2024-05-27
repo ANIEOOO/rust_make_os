@@ -15,7 +15,6 @@ pub extern "C" fn _start() -> ! {
     loop {}
 }
 
-
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     blog_os::test_panic_handler(info)

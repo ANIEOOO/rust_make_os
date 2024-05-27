@@ -1,6 +1,9 @@
+use crate::{serial_print, serial_println};
 use volatile::Volatile;
+use x86_64::instructions::interrupts;
 
 use core::fmt;
+use core::fmt::Write;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
@@ -10,6 +13,7 @@ use spin::Mutex;
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(u8)]
+
 pub enum Color {
     Black = 0,
     Blue = 1,
@@ -50,9 +54,8 @@ struct ScreenChar {
 const BUFFER_HEIGHT: usize = 25;
 const BUFFER_WIDTH: usize = 80;
 
-
 /* chars: [[ScreenChar; BUFFER_WIDTH]; BUFFER_HEIGHT]: 一个二维数组，每行有 BUFFER_WIDTH 个 ScreenChar，
-总共有 BUFFER_HEIGHT 行。这个二维数组用于表示整个屏幕的状态，每个 ScreenChar 存储一个字符及其颜色代码。*/ 
+总共有 BUFFER_HEIGHT 行。这个二维数组用于表示整个屏幕的状态，每个 ScreenChar 存储一个字符及其颜色代码。*/
 #[repr(transparent)]
 struct Buffer {
     chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
@@ -61,7 +64,7 @@ struct Buffer {
 pub struct Writer {
     column_position: usize,
     color_code: ColorCode,
-    buffer: &'static mut Buffer,    // static生命周期表明整个程序运行期间有效
+    buffer: &'static mut Buffer, // static生命周期表明整个程序运行期间有效
 }
 
 // 创建一个全局静态变量表示屏幕参数
@@ -73,31 +76,31 @@ lazy_static! {
     });
 }
 
-
 impl Writer {
     pub fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(), // 写入字符'\n'表示换行
             byte => {
-                if self.column_position >= BUFFER_WIDTH {   // 换行
+                if self.column_position >= BUFFER_WIDTH {
+                    // 换行
                     self.new_line();
                 }
 
-                let row = BUFFER_HEIGHT - 1;    // 待写入的行
+                let row = BUFFER_HEIGHT - 1; // 待写入的行
                 let col = self.column_position; // 待写入的列
 
-                let color_code = self.color_code;   // 待写入的颜色
+                let color_code = self.color_code; // 待写入的颜色
                 self.buffer.chars[row][col].write(ScreenChar {
                     ascii_character: byte,
                     color_code: color_code,
                 });
                 self.column_position += 1;
             }
-            
         }
     }
 
-    fn new_line(&mut self) {/*TODO */
+    fn new_line(&mut self) {
+        /*TODO */
         for row in 1..BUFFER_HEIGHT {
             for col in 0..BUFFER_WIDTH {
                 let character = self.buffer.chars[row][col].read(); // 读取字符
@@ -124,10 +127,10 @@ impl Writer {
     pub fn write_string(&mut self, s: &str) {
         for byte in s.bytes() {
             match byte {
-                 // 可以是能打印的ASCII码字节，也可以是换行符
-                 0x20..=0x7e | b'\n' => self.write_byte(byte),
-                 // 不包含上述ascii码则写入0xfe
-                 _ => self.write_byte(0xfe),
+                // 可以是能打印的ASCII码字节，也可以是换行符
+                0x20..=0x7e | b'\n' => self.write_byte(byte),
+                // 不包含上述ascii码则写入0xfe
+                _ => self.write_byte(0xfe),
             }
         }
     }
@@ -145,7 +148,7 @@ impl fmt::Write for Writer {
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
-    
+
 }
 
 #[macro_export]
@@ -157,36 +160,41 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    WRITER.lock().write_fmt(args).unwrap();
+    use x86_64::instructions::interrupts;
+    interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args).unwrap();
+    });
 }
 
+#[test_case]
+fn test_println_simple() {
+    serial_print!("test_println... ");
+    println!("test_println_simple output");
+    serial_println!("[ok]");
+}
 
-// #[test_case]
-// fn test_println_simple() {
-//     serial_print!("test_println... ");
-//     println!("test_println_simple output");
-//     serial_println!("[ok]");
-// }
+#[test_case]
+fn test_println_many() {
+    serial_print!("test_println_many...");
+    for _ in 0..200 {
+        println!("test_println_many output");
+    }
+    serial_println!("[ok]");
+}
 
-// #[test_case]
-// fn test_println_many() {
-//     serial_print!("test_println_many...");
-//     for _ in 0..200 {
-//         println!("test_println_many output");
-//     }
-//     serial_println!("[ok]");
-// }
+#[test_case]
+fn test_println_output() {
+    serial_print!("test_println_output... ");
+    use x86_64::instructions::interrupts;
 
-// #[test_case]
-// fn test_println_output() {
-//     serial_print!("test_println_output... ");
+    let s = "Some test string that fits on a single line";
 
-//     let s = "Some test string that fits on a single line";
-//     println!("{}", s);
-//     for (i, c) in s.chars().enumerate() {
-//         let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
-//         assert_eq!(char::from(screen_char.ascii_character), c);
-//     }
-
-//     serial_println!("[ok]");
-// }
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writeln!(writer, "\n{}", s).expect("writeln failed");
+        for (i, c) in s.chars().enumerate() {
+            let screen_char = writer.buffer.chars[BUFFER_HEIGHT - 2][i].read();
+            assert_eq!(char::from(screen_char.ascii_character), c);
+        }
+    });
+}

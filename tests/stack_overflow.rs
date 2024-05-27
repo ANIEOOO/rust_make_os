@@ -1,15 +1,13 @@
-
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
 
-use core::panic::PanicInfo;
 use blog_os::serial_print;
+use blog_os::{exit_qemu, serial_println, QemuExitCode};
+use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use x86_64::structures::idt::InterruptDescriptorTable;
-use blog_os::{exit_qemu, QemuExitCode, serial_println};
 use x86_64::structures::idt::InterruptStackFrame;
-
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
@@ -34,7 +32,6 @@ fn stack_overflow() {
     stack_overflow(); // for each recursion, the return address is pushed
     volatile::Volatile::new(0).read(); // prevent tail recursion optimizations
 }
-
 
 lazy_static! {
     static ref TEST_IDT: InterruptDescriptorTable = {
